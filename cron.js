@@ -21,7 +21,7 @@ continue;
 }
 
 try {
-await axios.post(user.webhook_url, {
+await axios.post("https://n8n-promose-tracker-1.onrender.com/webhook/12be0595-faba-4dee-9b85-d22d0fec0166", {
 userEmail: user.email,
 });
 
