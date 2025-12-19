@@ -36,7 +36,7 @@ app.get("/auth/google/callback", (req, res) => {
 // ===============================
 // STEP 2: GOOGLE CALLBACK
 // ===============================
-app.get("/auth/google", async (req, res) => {
+app.get("/auth/google/callback", async (req, res) => {
   try {
     const { code } = req.query;
 
