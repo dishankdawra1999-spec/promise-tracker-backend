@@ -13,7 +13,7 @@ app.use(express.json());
 // ===============================
 // STEP 1: GOOGLE LOGIN
 // ===============================
-app.get("/auth/google", (req, res) => {
+app.get("/auth/google/callback", (req, res) => {
   const loginClient = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
