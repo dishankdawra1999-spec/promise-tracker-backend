@@ -21,9 +21,8 @@ continue;
 }
 
 try {
-await axios.post("https://140.238.240.181:5678/webhook/12be0595-faba-4dee-9b85-d22d0fec0166", {
+await axios.post("http://promise-tracker-backend.onrender.com/webhook/12be0595-faba-4dee-9b85-d22d0fec0166", {
 userEmail: user.email,
-messages: []
 });
 
 // ✅ Mark as sent
