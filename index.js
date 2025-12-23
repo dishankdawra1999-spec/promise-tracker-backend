@@ -181,11 +181,7 @@ app.listen(PORT, () => {
 // CRON — DAILY 9 AM IST
 // ======================================================
 cron.schedule(
-<<<<<<< HEAD
   "* * * *", // 9 AM IST
-=======
-  "* * * * *", // 9 AM IST
->>>>>>> 0e1dbe9d1e39d0417f7433b3416c67dc0552d430
   () => {
     console.log("⏰ Running daily promise job...");
     runDailyJob();
