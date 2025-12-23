@@ -6,40 +6,55 @@ const db = require("./db");
 const runDailyJob = require("./cron");
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
+// -------------------------------
+// Middleware
+// -------------------------------
 app.use(express.json());
 
-// ===============================
-// STEP 1: GOOGLE LOGIN
-// ===============================
-app.get("/auth/google/callback", (req, res) => {
+// ======================================================
+// STEP 0: HEALTH CHECK (important for Render / prod)
+// ======================================================
+app.get("/", (req, res) => {
+  res.send("Promise Tracker backend is running ✅");
+});
+
+// ======================================================
+// STEP 1: GOOGLE LOGIN (FRESH CLIENT — VERY IMPORTANT)
+// ======================================================
+app.get("/auth/google", (req, res) => {
   const loginClient = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
     process.env.GOOGLE_REDIRECT_URI
   );
 
-  const url = loginClient.generateAuthUrl({
+  const authUrl = loginClient.generateAuthUrl({
     access_type: "offline",
-    prompt: "consent",
+    prompt: "consent", // 🔴 MUST for refresh_token
     scope: [
       "https://www.googleapis.com/auth/gmail.send",
       "https://www.googleapis.com/auth/gmail.readonly",
-      "https://www.googleapis.com/auth/userinfo.email"
+      "https://www.googleapis.com/auth/userinfo.email",
     ],
   });
 
-  res.redirect(url);
+  res.redirect(authUrl);
 });
 
-// ===============================
-// STEP 2: GOOGLE CALLBACK
-// ===============================
+// ======================================================
+// STEP 2: GOOGLE CALLBACK (NO LOOP, SAFE FLOW)
+// ======================================================
 app.get("/auth/google/callback", async (req, res) => {
   try {
     const { code } = req.query;
 
+    if (!code) {
+      return res.status(400).send("Missing auth code");
+    }
+
+    // 🔐 Fresh client again (DO NOT reuse)
     const callbackClient = new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,
       process.env.GOOGLE_CLIENT_SECRET,
@@ -49,7 +64,7 @@ app.get("/auth/google/callback", async (req, res) => {
     const { tokens } = await callbackClient.getToken(code);
     callbackClient.setCredentials(tokens);
 
-    // ✅ Get user email safely
+    // 🔑 Get user email (identity)
     const oauth2 = google.oauth2({
       version: "v2",
       auth: callbackClient,
@@ -58,7 +73,11 @@ app.get("/auth/google/callback", async (req, res) => {
     const { data } = await oauth2.userinfo.v2.me.get();
     const email = data.email;
 
-    // 💾 Save tokens in DB
+    if (!email) {
+      throw new Error("Email not received from Google");
+    }
+
+    // 💾 Save tokens to DB
     db.run(
       `
       INSERT OR REPLACE INTO users
@@ -74,16 +93,27 @@ app.get("/auth/google/callback", async (req, res) => {
     );
 
     console.log("✅ Tokens saved for:", email);
-    res.send("Gmail connected successfully. You can close this tab.");
+
+    // 🔴 THIS REDIRECT STOPS THE OAUTH LOOP
+    return res.redirect("/success");
   } catch (err) {
     console.error("❌ OAuth Error:", err.message);
-    res.status(500).send("OAuth failed");
+    return res.status(500).send("OAuth failed");
   }
 });
 
-// ===============================
-// STEP 3: SEND EMAIL (used by n8n)
-// ===============================
+// ======================================================
+// STEP 3: SUCCESS PAGE (HUMAN FEEDBACK ONLY)
+// ======================================================
+app.get("/success", (req, res) => {
+  res.send(
+    "✅ Gmail connected successfully. You will now receive daily reminders."
+  );
+});
+
+// ======================================================
+// STEP 4: SEND EMAIL (USED BY n8n)
+// ======================================================
 app.post("/send-email", (req, res) => {
   const { to, subject, body } = req.body;
 
@@ -91,12 +121,14 @@ app.post("/send-email", (req, res) => {
     return res.status(400).json({ error: "Missing fields" });
   }
 
+  // 🔁 Load correct user token
   db.get("SELECT * FROM users WHERE email = ?", [to], async (err, user) => {
     if (err || !user) {
       return res.status(400).json({ error: "User not connected" });
     }
 
     try {
+      // 🔐 User-specific OAuth client
       const userClient = new google.auth.OAuth2(
         process.env.GOOGLE_CLIENT_ID,
         process.env.GOOGLE_CLIENT_SECRET,
@@ -138,20 +170,25 @@ app.post("/send-email", (req, res) => {
   });
 });
 
-// ===============================
-// SERVER
-// ===============================
+// ======================================================
+// SERVER START
+// ======================================================
 app.listen(PORT, () => {
   console.log(`🚀 Backend running at http://localhost:${PORT}`);
 });
 
-// ===============================
-// CRON (enable later)
-// ===============================
- cron.schedule(
-   "* * * * *",
-   () => runDailyJob(),
-   { timezone: "Asia/Kolkata" }
- );
+// ======================================================
+// CRON — DAILY 9 AM IST
+// ======================================================
+cron.schedule(
+  "* * * *", // 9 AM IST
+  () => {
+    console.log("⏰ Running daily promise job...");
+    runDailyJob();
+  },
+  {
+    timezone: "Asia/Kolkata",
+  }
+);
 
-console.log("Backend started");
+console.log("🕘 Daily cron scheduled at 9 AM IST");
